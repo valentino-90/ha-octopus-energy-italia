@@ -1,0 +1,3 @@
+# Test con Home Assistant (recorder vero). Per i soli test puri bastano
+# pytest e aiohttp.
+pytest-homeassistant-custom-component==0.13.375

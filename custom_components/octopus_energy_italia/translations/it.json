@@ -1,0 +1,89 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Octopus Energy Italia",
+        "description": "Inserisci email e password dell'area clienti Octopus Energy Italia. Vengono salvate solo nella configurazione di Home Assistant e inviate solo a api.oeit-kraken.energy.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Accedi di nuovo",
+        "description": "Octopus ha rifiutato le credenziali salvate. Inserisci di nuovo email e password.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "reconfigure": {
+        "title": "Cambia credenziali",
+        "description": "Inserisci email e password dell'area clienti Octopus Energy Italia. Vengono salvate solo nella configurazione di Home Assistant e inviate solo a api.oeit-kraken.energy.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Email o password non valide.",
+      "cannot_connect": "Impossibile contattare Octopus Energy. Riprova più tardi.",
+      "rate_limited": "Troppi tentativi: Octopus ha bloccato temporaneamente le richieste. Riprova più tardi.",
+      "no_accounts": "Nessun conto associato a queste credenziali.",
+      "unknown": "Errore imprevisto."
+    },
+    "abort": {
+      "already_configured": "Questo conto è già configurato.",
+      "reauth_successful": "Accesso aggiornato.",
+      "reconfigure_successful": "Credenziali aggiornate.",
+      "wrong_account": "Queste credenziali appartengono a un altro conto."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "balance": {
+        "name": "Saldo {ledger}"
+      },
+      "meter_reading_electricity": {
+        "name": "Lettura contatore"
+      },
+      "meter_reading_gas": {
+        "name": "Lettura contatore"
+      },
+      "reading_time": {
+        "name": "Ultima lettura"
+      },
+      "reading_date": {
+        "name": "Data ultima lettura"
+      },
+      "last_period_electricity": {
+        "name": "Consumo ultimo periodo"
+      },
+      "last_period_gas": {
+        "name": "Consumo ultimo periodo"
+      },
+      "price_electricity": {
+        "name": "Prezzo energia (F1 o monoraria)"
+      },
+      "price_electricity_f2": {
+        "name": "Prezzo energia F2"
+      },
+      "price_electricity_f3": {
+        "name": "Prezzo energia F3"
+      },
+      "price_gas": {
+        "name": "Prezzo gas"
+      },
+      "standing_charge": {
+        "name": "Quota fissa annua"
+      },
+      "product": {
+        "name": "Offerta"
+      },
+      "supply_status": {
+        "name": "Stato fornitura"
+      }
+    }
+  }
+}

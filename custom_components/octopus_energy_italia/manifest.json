@@ -1,0 +1,13 @@
+{
+  "domain": "octopus_energy_italia",
+  "name": "Octopus Energy Italia",
+  "codeowners": ["@valentino-90"],
+  "config_flow": true,
+  "dependencies": ["recorder"],
+  "documentation": "https://github.com/valentino-90/ha-octopus-energy-italia",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/valentino-90/ha-octopus-energy-italia/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}
