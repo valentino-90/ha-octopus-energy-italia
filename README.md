@@ -5,8 +5,6 @@
 # Octopus Energy Italia per Home Assistant
 
 [![HACS](https://img.shields.io/badge/HACS-repository%20personalizzato-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories/)
-[![Validate](https://github.com/valentino-90/ha-octopus-energy-italia/actions/workflows/validate.yml/badge.svg)](https://github.com/valentino-90/ha-octopus-energy-italia/actions/workflows/validate.yml)
-[![Tests](https://github.com/valentino-90/ha-octopus-energy-italia/actions/workflows/tests.yml/badge.svg)](https://github.com/valentino-90/ha-octopus-energy-italia/actions/workflows/tests.yml)
 
 Integrazione non ufficiale che legge dall'area clienti di **Octopus Energy Italia**
 i consumi di luce e gas, le tariffe e il saldo, e porta lo storico dei consumi
