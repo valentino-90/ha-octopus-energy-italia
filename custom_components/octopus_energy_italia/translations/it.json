@@ -85,5 +85,21 @@
         "name": "Stato fornitura"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Prezzi per le statistiche di costo",
+        "description": "Il prezzo variabile tutto compreso: energia, rete, oneri di sistema, imposte e IVA, cioè la parte della bolletta che cambia coi consumi. Le voci sono nelle pagine di dettaglio della bolletta. Lascia vuoto un campo per non avere la statistica di costo. Un prezzo nuovo vale da oggi: i giorni passati tengono il loro.",
+        "data": {
+          "price_electricity": "Prezzo della luce",
+          "price_gas": "Prezzo del gas"
+        },
+        "data_description": {
+          "price_electricity": "€/kWh, tutto compreso",
+          "price_gas": "€/m³, tutto compreso"
+        }
+      }
+    }
   }
 }

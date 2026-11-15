@@ -57,3 +57,12 @@ CONF_PASSWORD: Final = "password"  # nome del campo, non una credenziale
 
 KIND_ELECTRICITY: Final = "electricity"
 KIND_GAS: Final = "gas"
+
+# Statistiche di costo (opzioni): il prezzo variabile tutto compreso (energia,
+# rete, oneri, imposte e IVA: la parte che cambia coi consumi), in euro per
+# kWh o per m³. Vuoto = nessuna statistica di costo. Ogni cambio di prezzo si
+# aggiunge alla sua storia ("dal giorno X"), così i giorni riscritti dalla
+# finestra STATS_REWRITE_DAYS tengono il prezzo che avevano.
+CONF_PRICE_ELECTRICITY: Final = "price_electricity"
+CONF_PRICE_GAS: Final = "price_gas"
+PRICE_HISTORY_SUFFIX: Final = "_history"

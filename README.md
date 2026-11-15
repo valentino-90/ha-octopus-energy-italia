@@ -61,12 +61,33 @@ Serve Home Assistant 2025.11 o successivo.
 
 Vengono creati un dispositivo per il conto (saldo) e uno per ogni POD e PDR.
 
+### Costi
+
+Nelle opzioni dell'integrazione (**Configura**) puoi indicare il prezzo
+variabile tutto compreso della luce (€/kWh) e del gas (€/m³): energia, rete,
+oneri di sistema, imposte e IVA, cioè la parte della bolletta che cambia coi
+consumi. Le voci sono nelle pagine di dettaglio della bolletta. Con un prezzo
+compaiono le statistiche `Octopus costo luce …` e `Octopus costo gas …`, in
+euro, giorno per giorno.
+
+- Il primo prezzo vale per tutto lo storico.
+- Un prezzo cambiato vale da quel giorno: i giorni passati tengono il loro,
+  anche quando l'integrazione riscrive gli ultimi 45 giorni.
+- Un campo vuoto ferma la statistica di costo (quella già scritta resta).
+- Le quote fisse (commercializzazione, potenza) non dipendono dai consumi: nella
+  dashboard Energia vanno nel «costo fisso giornaliero» della rete elettrica.
+
 ### Dashboard Energia
 
 In **Impostazioni → Dashboard → Energia**:
 
-- **Rete elettrica → Aggiungi consumo**: scegli la statistica `Octopus luce …`;
-- **Consumo di gas → Aggiungi fonte di gas**: scegli la statistica `Octopus gas …`.
+- **Rete elettrica → Aggiungi consumo**: scegli la statistica `Octopus luce …`
+  e, come costo, «Usa una statistica di costo» con `Octopus costo luce …`;
+- **Consumo di gas → Aggiungi fonte di gas**: scegli la statistica `Octopus gas …`
+  e, come costo, `Octopus costo gas …`.
+
+Per le statistiche esterne Home Assistant non accetta un prezzo fisso o un'entità
+prezzo: per avere gli euro servono le statistiche di costo (vedi «Costi»).
 
 Usa le statistiche `Octopus luce/gas …`, non i sensori «Lettura contatore»: le
 statistiche mettono i consumi nel giorno a cui si riferiscono, i sensori nel
@@ -75,7 +96,7 @@ momento in cui la lettura arriva in Home Assistant.
 ## Cosa non fa
 
 - Non comanda nulla: niente Intelligent Octopus, ricariche, wallbox o dispositivi.
-- Non calcola il costo in bolletta e non scarica le bollette.
+- Non scarica le bollette: i costi si calcolano dal prezzo che indichi tu.
 - Non mostra consumi orari: usa le letture del contatore che Octopus espone
   (giornaliere o mensili, a seconda del contatore).
 - Funziona solo con Octopus Energy **Italia** (non con le API di altri paesi).
@@ -145,8 +166,13 @@ history as long-term statistics for the **Energy dashboard**.
   a reading on 30 September followed by one on 31 October puts that energy in
   October. The last 45 days are rewritten on every update to pick up late or
   corrected readings; estimated readings are ignored.
+- **Costs**: in the integration options set the all-in variable price of
+  electricity (€/kWh) and gas (€/m³); the cost statistics `Octopus costo luce …`
+  and `Octopus costo gas …` appear, to use as cost statistics in the Energy
+  dashboard. The first price applies to the whole history, a changed price only
+  from that day on.
 - **What it does not do**: no device control (no Intelligent Octopus), no bill
-  or cost calculation, no hourly data, Italy only. Not affiliated with Octopus
+  download, no hourly data, Italy only. Not affiliated with Octopus
   Energy.
 - **Privacy**: it only talks to `https://api.oeit-kraken.energy/v1/graphql/`, has
   no third-party dependencies, keeps tokens in memory only and redacts personal

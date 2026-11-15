@@ -178,6 +178,37 @@ def compute_daily_rows(
     return rows
 
 
+def price_on(prices: list[tuple[date, float]], day: date) -> float:
+    """Il prezzo valido nel giorno: l'ultimo cambiato entro quel giorno. Prima
+    del primo cambio vale il primo prezzo (lo storico si calcola con quello)."""
+    price = prices[0][1]
+    for since, value in prices:
+        if since <= day:
+            price = value
+    return price
+
+
+def compute_cost_rows(
+    rows: Iterable[DailyRow],
+    prices: list[tuple[date, float]],
+    base: tuple[float, float] | None,
+) -> list[tuple[date, float]]:
+    """Costo cumulato giorno per giorno, (giorno, somma in euro).
+
+    Il consumo di un giorno (la differenza fra due `sum` successive) costa il
+    prezzo di quel giorno (`price_on`). Con `base` = (somma dei consumi, somma
+    dei costi) della riga ancora si riparte da lì; senza, dalla prima riga
+    dello storico, con le somme che partono da 0.
+    """
+    previous, cost = base if base is not None else (0.0, 0.0)
+    out: list[tuple[date, float]] = []
+    for row in rows:
+        cost += max(row.sum - previous, 0.0) * price_on(prices, row.day)
+        previous = row.sum
+        out.append((row.day, round(cost, 6)))
+    return out
+
+
 def latest_period(readings: Iterable[Reading]) -> PeriodConsumption | None:
     """Consumo fra le ultime due letture disponibili (per il sensore)."""
     groups = _group_by_instant(readings)

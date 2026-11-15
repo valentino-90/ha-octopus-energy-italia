@@ -36,7 +36,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: OctopusConfigEntry) -> b
         )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # Prezzi cambiati nelle opzioni: si riparte, e i costi si ricalcolano.
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
+
+
+async def _async_options_updated(hass: HomeAssistant, entry: OctopusConfigEntry) -> None:
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: OctopusConfigEntry) -> bool:

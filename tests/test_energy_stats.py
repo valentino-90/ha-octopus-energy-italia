@@ -15,10 +15,12 @@ from oei_pure.energy_stats import (
     Anchor,
     DailyRow,
     booking_day,
+    compute_cost_rows,
     compute_daily_rows,
     day_start,
     latest_period,
     latest_total,
+    price_on,
     statistic_id_for,
 )
 from oei_pure.models import Reading, parse_gas_readings
@@ -383,3 +385,50 @@ def test_latest_period_and_total() -> None:
     assert period.start == _at(date(2026, 10, 1))
     assert period.end == _at(date(2026, 11, 1))
     assert latest_total(readings) == (_at(date(2026, 11, 1)), pytest.approx(68.0))
+
+
+# ---------------------------------------------------------------------------
+# Costi
+# ---------------------------------------------------------------------------
+
+
+def _rows(*sums: float, start: date = date(2026, 11, 1)) -> list[DailyRow]:
+    return [DailyRow(day=start + timedelta(days=i), sum=s, state=None) for i, s in enumerate(sums)]
+
+
+def test_price_on_uses_the_last_change_up_to_the_day() -> None:
+    prices = [(date.min, 0.20), (date(2026, 12, 1), 0.25)]
+    assert price_on(prices, date(2025, 1, 1)) == 0.20
+    assert price_on(prices, date(2026, 11, 30)) == 0.20
+    assert price_on(prices, date(2026, 12, 1)) == 0.25
+
+
+def test_costs_from_scratch_follow_the_consumption() -> None:
+    rows = _rows(0.0, 3.0, 5.0, 9.0)
+    costs = compute_cost_rows(rows, [(date.min, 0.5)], None)
+    assert costs == [
+        (date(2026, 11, 1), 0.0),
+        (date(2026, 11, 2), 1.5),
+        (date(2026, 11, 3), 2.5),
+        (date(2026, 11, 4), 4.5),
+    ]
+
+
+def test_a_new_price_counts_only_from_its_day() -> None:
+    rows = _rows(10.0, 12.0, 15.0, start=date(2026, 11, 29))
+    prices = [(date.min, 0.2), (date(2026, 12, 1), 0.3)]
+    costs = compute_cost_rows(rows, prices, None)
+    # 29/11: 10 kWh a 0,2; 30/11: 2 a 0,2; 1/12: 3 a 0,3.
+    assert [c for _, c in costs] == pytest.approx([2.0, 2.4, 3.3])
+
+
+def test_costs_restart_from_the_anchor() -> None:
+    # Ancora: 100 kWh consumati e 20 € spesi; poi 4 kWh a 0,25.
+    rows = _rows(102.0, 104.0, start=date(2026, 12, 2))
+    costs = compute_cost_rows(rows, [(date.min, 0.25)], (100.0, 20.0))
+    assert [c for _, c in costs] == pytest.approx([20.5, 21.0])
+
+
+def test_a_lower_sum_costs_nothing() -> None:
+    costs = compute_cost_rows(_rows(5.0, 4.0, 6.0), [(date.min, 1.0)], None)
+    assert [c for _, c in costs] == pytest.approx([5.0, 5.0, 7.0])

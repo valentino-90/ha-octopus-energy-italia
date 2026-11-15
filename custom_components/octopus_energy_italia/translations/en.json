@@ -85,5 +85,21 @@
         "name": "Supply status"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Prices for the cost statistics",
+        "description": "The variable price, all included: energy, network, system charges, taxes and VAT, the part of the bill that changes with consumption. You find the items in the detail pages of the bill. Leave a field empty for no cost statistic. A new price applies from today: past days keep theirs.",
+        "data": {
+          "price_electricity": "Electricity price",
+          "price_gas": "Gas price"
+        },
+        "data_description": {
+          "price_electricity": "€/kWh, all included",
+          "price_gas": "€/m³, all included"
+        }
+      }
+    }
   }
 }

@@ -34,7 +34,10 @@ from .api import (
     KrakenRateLimitError,
 )
 from .const import (
+    CONF_PRICE_ELECTRICITY,
+    CONF_PRICE_GAS,
     DOMAIN,
+    PRICE_HISTORY_SUFFIX,
     SEED_DAYS,
     GAS_READING_PRIORITY,
     GAS_READING_TYPES_FOR_STATS,
@@ -46,6 +49,7 @@ from .energy_stats import (
     Anchor,
     DailyRow,
     PeriodConsumption,
+    compute_cost_rows,
     compute_daily_rows,
     day_start,
     latest_period,
@@ -210,6 +214,7 @@ class OctopusCoordinator(DataUpdateCoordinator[dict[str, AccountState]]):
                 readings[-1].ts.astimezone(tz).date() if readings else "-",
             )
         self._async_write_statistics(point, statistic_id, rows, tz)
+        await self._async_write_costs(point, statistic_id, rows, anchor, tz)
         self._meters[cache_key] = meter
         return meter
 
@@ -236,18 +241,22 @@ class OctopusCoordinator(DataUpdateCoordinator[dict[str, AccountState]]):
         readings = dedupe_gas_readings(parse_gas_readings(nodes, tz), GAS_READING_PRIORITY)
         return [r for r in readings if r.quality in GAS_READING_TYPES_FOR_STATS]
 
+    @staticmethod
+    def _units(kind: str) -> dict[str, str]:
+        # Valori sempre nell'unità con cui li scriviamo (kWh / m³), anche se
+        # l'utente ha cambiato l'unità di visualizzazione della statistica.
+        return (
+            {EnergyConverter.UNIT_CLASS: UnitOfEnergy.KILO_WATT_HOUR}
+            if kind == KIND_ELECTRICITY
+            else {VolumeConverter.UNIT_CLASS: UnitOfVolume.CUBIC_METERS}
+        )
+
     async def _async_get_anchor(
         self, statistic_id: str, kind: str, tz: tzinfo
     ) -> Anchor | None:
         """Riga da cui ripartire: STATS_REWRITE_DAYS giorni prima dell'ultima scritta."""
         recorder = get_instance(self.hass)
-        # Valori sempre nell'unità con cui li scriviamo (kWh / m³), anche se
-        # l'utente ha cambiato l'unità di visualizzazione della statistica.
-        units = (
-            {EnergyConverter.UNIT_CLASS: UnitOfEnergy.KILO_WATT_HOUR}
-            if kind == KIND_ELECTRICITY
-            else {VolumeConverter.UNIT_CLASS: UnitOfVolume.CUBIC_METERS}
-        )
+        units = self._units(kind)
         last = await recorder.async_add_executor_job(
             get_last_statistics, self.hass, 1, statistic_id, False, {"sum", "state"}
         )
@@ -279,6 +288,112 @@ class OctopusCoordinator(DataUpdateCoordinator[dict[str, AccountState]]):
             sum=float(row["sum"]),
             state=float(row["state"]) if row.get("state") is not None else None,
         )
+
+    def _prices(self, kind: str) -> list[tuple[date, float]] | None:
+        """I prezzi delle opzioni, in ordine di data; None senza prezzo."""
+        key = CONF_PRICE_ELECTRICITY if kind == KIND_ELECTRICITY else CONF_PRICE_GAS
+        options = self.config_entry.options
+        current = options.get(key)
+        if current in (None, "") or float(current) <= 0:
+            return None
+        history = [
+            (date.fromisoformat(since), float(value))
+            for since, value in options.get(key + PRICE_HISTORY_SUFFIX) or []
+        ]
+        return sorted(history) or [(date.min, float(current))]
+
+    async def _async_rows_until(
+        self, statistic_id: str, kind: str, last_day: date, tz: tzinfo
+    ) -> list[DailyRow]:
+        """Le righe dei consumi già scritte, fino a `last_day` compreso."""
+        found = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            day_start(date(2000, 1, 1), tz),
+            day_start(last_day + timedelta(days=1), tz),
+            {statistic_id},
+            "hour",
+            self._units(kind),
+            {"sum"},
+        )
+        return [
+            DailyRow(
+                day=dt_util.utc_from_timestamp(r["start"]).astimezone(tz).date(),
+                sum=float(r["sum"]),
+                state=None,
+            )
+            for r in (found.get(statistic_id) or [] if found else [])
+            if r.get("sum") is not None
+        ]
+
+    async def _async_cost_on(self, cost_id: str, day: date, tz: tzinfo) -> float | None:
+        """La somma dei costi già scritta nel giorno, se c'è."""
+        found = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            day_start(day, tz),
+            day_start(day + timedelta(days=1), tz),
+            {cost_id},
+            "hour",
+            None,
+            {"sum"},
+        )
+        rows = found.get(cost_id) if found else None
+        return float(rows[0]["sum"]) if rows and rows[0].get("sum") is not None else None
+
+    async def _async_write_costs(
+        self,
+        point: SupplyPoint,
+        statistic_id: str,
+        rows: list[DailyRow],
+        anchor: Anchor | None,
+        tz: tzinfo,
+    ) -> None:
+        """Il costo dei consumi, giorno per giorno, ai prezzi delle opzioni.
+
+        Riparte dalla stessa ancora dei consumi. Se i costi non ci sono ancora
+        (prezzo appena impostato su uno storico già scritto), si calcola tutto
+        lo storico, col primo prezzo per i giorni prima dei cambi.
+        """
+        prices = self._prices(point.kind)
+        if prices is None or not rows:
+            return
+        cost_id = statistic_id_for(DOMAIN, f"{point.kind}_cost", point.identifier)
+        history, base = rows, None
+        if anchor is not None:
+            cost = await self._async_cost_on(cost_id, anchor.day, tz)
+            if cost is not None:
+                base = (anchor.sum, cost)
+            else:
+                history = [
+                    *await self._async_rows_until(statistic_id, point.kind, anchor.day, tz),
+                    *rows,
+                ]
+        cost_rows = compute_cost_rows(history, prices, base)
+        frozen = (tuple(prices), tuple(cost_rows))
+        if not cost_rows or self._written.get(cost_id) == frozen:
+            return
+        electricity = point.kind == KIND_ELECTRICITY
+        metadata = StatisticMetaData(
+            mean_type=StatisticMeanType.NONE,
+            has_sum=True,
+            name=(
+                f"Octopus costo luce {point.identifier}"
+                if electricity
+                else f"Octopus costo gas {point.identifier}"
+            ),
+            source=DOMAIN,
+            statistic_id=cost_id,
+            unit_class=None,
+            unit_of_measurement=self.hass.config.currency,
+        )
+        async_add_external_statistics(
+            self.hass,
+            metadata,
+            [StatisticData(start=day_start(day, tz), sum=total) for day, total in cost_rows],
+        )
+        self._written[cost_id] = frozen
+        _LOGGER.debug("Statistiche %s: scritte %d righe giornaliere", cost_id, len(cost_rows))
 
     def _async_write_statistics(
         self, point: SupplyPoint, statistic_id: str, rows: list[DailyRow], tz: tzinfo

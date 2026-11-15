@@ -33,6 +33,7 @@ from pytest_homeassistant_custom_component.components.recorder.common import (  
 )
 
 from custom_components.octopus_energy_italia.api import KrakenAuthError  # noqa: E402
+from custom_components.octopus_energy_italia.config_flow import updated_prices  # noqa: E402
 from custom_components.octopus_energy_italia.const import DOMAIN  # noqa: E402
 from custom_components.octopus_energy_italia.coordinator import (  # noqa: E402
     OctopusCoordinator,
@@ -49,6 +50,8 @@ PROPERTY = "property-test-1"
 
 ELECTRICITY_ID = statistic_id_for(DOMAIN, "electricity", POD)
 GAS_ID = statistic_id_for(DOMAIN, "gas", PDR)
+ELECTRICITY_COST_ID = statistic_id_for(DOMAIN, "electricity_cost", POD)
+GAS_COST_ID = statistic_id_for(DOMAIN, "gas_cost", PDR)
 
 # Letture di fine mese inventate: (giorno, F1, F2, F3, gas m³).
 READINGS = [
@@ -260,3 +263,78 @@ async def test_config_flow(
         assert result["data"]["email"] == "test@example.invalid"
     else:
         assert result["errors"] == {"base": "invalid_auth"}
+
+
+def test_updated_prices_keeps_the_history() -> None:
+    """Il primo prezzo vale per tutto lo storico; un cambio vale da quel giorno."""
+    first = updated_prices({}, {"price_electricity": 0.2}, date(2026, 11, 16))
+    assert first["price_electricity"] == 0.2
+    assert first["price_electricity_history"] == [["0001-01-01", 0.2]]
+    assert "price_gas" not in first
+
+    same = updated_prices(first, {"price_electricity": 0.2, "price_gas": 0.6}, date(2026, 11, 20))
+    assert same["price_electricity_history"] == [["0001-01-01", 0.2]]
+    assert same["price_gas_history"] == [["0001-01-01", 0.6]]
+
+    changed = updated_prices(same, {"price_electricity": 0.25, "price_gas": 0.6}, date(2026, 12, 1))
+    assert changed["price_electricity_history"] == [["0001-01-01", 0.2], ["2026-12-01", 0.25]]
+
+    off = updated_prices(changed, {"price_gas": 0.6}, date(2026, 12, 2))
+    assert "price_electricity" not in off and "price_electricity_history" not in off
+
+
+async def test_costs_in_recorder(recorder_mock: Recorder, hass: HomeAssistant, freezer) -> None:
+    """Costi accesi dopo il primo import, poi un prezzo nuovo: ogni mese al suo prezzo."""
+    await hass.config.async_set_time_zone("Europe/Rome")
+    await hass.config.async_update(currency="EUR")
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"email": "test@example.invalid", "password": "test"},
+        unique_id=ACCOUNT,
+    )
+    entry.add_to_hass(hass)
+    client = FakeKraken()
+    coordinator = OctopusCoordinator(hass, entry, client)  # type: ignore[arg-type]
+    coordinator.account_numbers = [ACCOUNT]
+    instance = get_instance(hass)
+
+    async def costs() -> dict[str, dict]:
+        await coordinator._async_update_data()
+        await async_wait_recording_done(hass)
+        return {
+            "luce": await instance.async_add_executor_job(_monthly_change, hass, ELECTRICITY_COST_ID),
+            "gas": await instance.async_add_executor_job(_monthly_change, hass, GAS_COST_ID),
+        }
+
+    # 1) Consumi senza prezzi: nessun costo.
+    freezer.move_to(datetime(2026, 11, 15, 10, tzinfo=TZ))
+    client.available_until = date(2026, 10, 31)
+    assert await costs() == {"luce": {}, "gas": {}}
+
+    # 2) Prezzi accesi su uno storico già scritto: tutto lo storico al prezzo.
+    hass.config_entries.async_update_entry(
+        entry,
+        options=updated_prices(
+            {}, {"price_electricity": 0.2, "price_gas": 0.5}, date(2026, 11, 15)
+        ),
+    )
+    freezer.move_to(datetime(2026, 11, 16, 10, tzinfo=TZ))
+    months = await costs()
+    assert months["luce"]["2026-09"] == pytest.approx(60.0 * 0.2)
+    assert months["luce"]["2026-10"] == pytest.approx(110.0 * 0.2)
+    assert months["gas"]["2026-10"] == pytest.approx(12.0 * 0.5)
+
+    # 3) Prezzo nuovo dal 20/11, poi arriva novembre: ottobre non cambia.
+    hass.config_entries.async_update_entry(
+        entry,
+        options=updated_prices(
+            entry.options, {"price_electricity": 0.3, "price_gas": 0.5}, date(2026, 11, 20)
+        ),
+    )
+    freezer.move_to(datetime(2026, 12, 28, 10, tzinfo=TZ))
+    client.available_until = date(2026, 11, 30)
+    months = await costs()
+    assert months["luce"]["2026-10"] == pytest.approx(110.0 * 0.2)
+    # La lettura del 30/11 chiude novembre: cade dopo il 20, quindi a 0,3.
+    assert months["luce"]["2026-11"] == pytest.approx(120.0 * 0.3)
+    assert months["gas"]["2026-11"] == pytest.approx(20.0 * 0.5)

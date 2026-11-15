@@ -4,16 +4,27 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from datetime import date
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
 )
+from homeassistant.util import dt as dt_util
 
 from .api import (
     KrakenAuthError,
@@ -22,7 +33,14 @@ from .api import (
     KrakenError,
     KrakenRateLimitError,
 )
-from .const import CONF_EMAIL, CONF_PASSWORD, DOMAIN
+from .const import (
+    CONF_EMAIL,
+    CONF_PASSWORD,
+    CONF_PRICE_ELECTRICITY,
+    CONF_PRICE_GAS,
+    DOMAIN,
+    PRICE_HISTORY_SUFFIX,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,6 +54,11 @@ class OctopusEnergyItaliaConfigFlow(ConfigFlow, domain=DOMAIN):
     """Configurazione tramite interfaccia di Home Assistant."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        return OctopusOptionsFlow()
 
     async def _async_validate(self, email: str, password: str) -> tuple[list[str], dict[str, str]]:
         """Prova l'accesso. Restituisce (numeri di conto, errori per il form)."""
@@ -144,3 +167,60 @@ class OctopusEnergyItaliaConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
+
+
+def _price_selector(unit: str) -> NumberSelector:
+    return NumberSelector(
+        NumberSelectorConfig(
+            min=0, max=10, step=0.0001, mode=NumberSelectorMode.BOX, unit_of_measurement=unit
+        )
+    )
+
+
+def updated_prices(options: Mapping[str, Any], user_input: Mapping[str, Any], today: date) -> dict:
+    """Le opzioni coi prezzi nuovi. Un prezzo cambiato si aggiunge alla sua
+    storia da oggi; il primo vale per tutto lo storico; uno tolto ferma i costi."""
+    out = dict(options)
+    for key in (CONF_PRICE_ELECTRICITY, CONF_PRICE_GAS):
+        history_key = key + PRICE_HISTORY_SUFFIX
+        value = user_input.get(key)
+        if value in (None, "") or float(value) <= 0:
+            out.pop(key, None)
+            out.pop(history_key, None)
+            continue
+        value = round(float(value), 6)
+        history = [list(x) for x in out.get(history_key) or []]
+        if not history:
+            history = [[date.min.isoformat(), value]]
+        elif history[-1][1] != value:
+            if history[-1][0] == today.isoformat():
+                history[-1][1] = value
+            else:
+                history.append([today.isoformat(), value])
+        out[key] = value
+        out[history_key] = history
+    return out
+
+
+class OctopusOptionsFlow(OptionsFlow):
+    """Opzioni: i prezzi per le statistiche di costo di luce e gas."""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        options = self.config_entry.options
+        if user_input is not None:
+            return self.async_create_entry(
+                data=updated_prices(options, user_input, dt_util.now().date())
+            )
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_PRICE_ELECTRICITY,
+                    description={"suggested_value": options.get(CONF_PRICE_ELECTRICITY)},
+                ): _price_selector("€/kWh"),
+                vol.Optional(
+                    CONF_PRICE_GAS,
+                    description={"suggested_value": options.get(CONF_PRICE_GAS)},
+                ): _price_selector("€/m³"),
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)
