@@ -171,8 +171,10 @@ class OctopusEnergyItaliaConfigFlow(ConfigFlow, domain=DOMAIN):
 
 def _price_selector(unit: str) -> NumberSelector:
     return NumberSelector(
+        # Passo libero: Home Assistant non accetta passi sotto 0,001, e un
+        # prezzo ha spesso quattro decimali.
         NumberSelectorConfig(
-            min=0, max=10, step=0.0001, mode=NumberSelectorMode.BOX, unit_of_measurement=unit
+            min=0, max=10, step="any", mode=NumberSelectorMode.BOX, unit_of_measurement=unit
         )
     )
 

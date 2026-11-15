@@ -338,3 +338,23 @@ async def test_costs_in_recorder(recorder_mock: Recorder, hass: HomeAssistant, f
     # La lettura del 30/11 chiude novembre: cade dopo il 20, quindi a 0,3.
     assert months["luce"]["2026-11"] == pytest.approx(120.0 * 0.3)
     assert months["gas"]["2026-11"] == pytest.approx(20.0 * 0.5)
+
+
+async def test_options_flow(recorder_mock: Recorder, hass: HomeAssistant, enable_custom_integrations) -> None:
+    """Il modulo dei prezzi si apre e salva i prezzi con la loro storia."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"email": "test@example.invalid", "password": "test"},
+        unique_id=ACCOUNT,
+    )
+    entry.add_to_hass(hass)
+    with patch("custom_components.octopus_energy_italia.async_setup_entry", return_value=True):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "init"
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"price_electricity": 0.1839, "price_gas": 0.6381}
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options["price_electricity"] == 0.1839
+    assert entry.options["price_gas_history"] == [["0001-01-01", 0.6381]]
